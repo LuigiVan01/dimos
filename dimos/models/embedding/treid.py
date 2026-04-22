@@ -35,6 +35,7 @@ from dimos.utils.data import get_data
 class TorchReIDModelConfig(EmbeddingModelConfig):
     model_name: str = "osnet_x1_0"
 
+
 class TorchReIDModel(EmbeddingModel, LocalModel):
     """TorchReID embedding model for person re-identification."""
 

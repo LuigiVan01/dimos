@@ -31,6 +31,7 @@ class CLIPModelConfig(HuggingFaceEmbeddingModelConfig):
     model_name: str = "openai/clip-vit-base-patch32"
     dtype: torch.dtype = torch.float32
 
+
 class CLIPModel(EmbeddingModel, HuggingFaceModel):
     """CLIP embedding model for vision-language re-identification."""
 
