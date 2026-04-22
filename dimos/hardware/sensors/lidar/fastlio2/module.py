@@ -20,12 +20,13 @@ Outputs registered (world-frame) point clouds and odometry with covariance.
 Usage::
 
     from dimos.hardware.sensors.lidar.fastlio2.module import FastLio2
-    from dimos.core.blueprints import autoconnect
+    from dimos.core.coordination.blueprints import autoconnect
 
-    autoconnect(
+    from dimos.core.coordination.module_coordinator import ModuleCoordinator
+    ModuleCoordinator.build(autoconnect(
         FastLio2.blueprint(host_ip="192.168.1.5"),
         SomeConsumer.blueprint(),
-    ).build().loop()
+    )).loop()
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ from typing import TYPE_CHECKING, Annotated
 
 from pydantic.experimental.pipeline import validate_as
 
+from dimos.core.core import rpc
 from dimos.core.native_module import NativeModule, NativeModuleConfig
 from dimos.core.stream import Out
 from dimos.hardware.sensors.lidar.livox.ports import (
@@ -188,9 +190,7 @@ class FastLio2Config(NativeModuleConfig):
         ]
 
 
-class FastLio2(
-    NativeModule[FastLio2Config], perception.Lidar, perception.Odometry, mapping.GlobalPointcloud
-):
+class FastLio2(NativeModule, perception.Lidar, perception.Odometry, mapping.GlobalPointcloud):
     """FAST-LIO2 SLAM module with integrated Livox Mid-360 driver.
 
     Ports:
@@ -199,7 +199,8 @@ class FastLio2(
         global_map (Out[PointCloud2]): Global voxel map (optional, enable via map_freq > 0).
     """
 
-    default_config = FastLio2Config
+    config: FastLio2Config
+
     lidar: Out[PointCloud2]
     odometry: Out[Odometry]
     global_map: Out[PointCloud2]
@@ -272,6 +273,14 @@ class FastLio2(
             host_ip=host_ip,
             lidar_ip=lidar_ip,
         )
+
+    @rpc
+    def start(self) -> None:
+        super().start()
+
+    @rpc
+    def stop(self) -> None:
+        super().stop()
 
 
 # Verify protocol port compliance (mypy will flag missing ports)

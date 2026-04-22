@@ -16,8 +16,8 @@ class QwenVlModelConfig(VlModelConfig):
     api_key: str | None = None
 
 
-class QwenVlModel(VlModel[QwenVlModelConfig]):
-    default_config = QwenVlModelConfig
+class QwenVlModel(VlModel):
+    config: QwenVlModelConfig
 
     @cached_property
     def _client(self) -> OpenAI:
@@ -32,7 +32,7 @@ class QwenVlModel(VlModel[QwenVlModelConfig]):
             api_key=api_key,
         )
 
-    def query(self, image: Image | np.ndarray, query: str) -> str:  # type: ignore[override, type-arg]
+    def query(self, image: Image | np.ndarray, query: str) -> str:  # type: ignore[override]
         if isinstance(image, np.ndarray):
             import warnings
 

@@ -17,8 +17,8 @@ class OpenAIVlModelConfig(VlModelConfig):
     api_key: str | None = None
 
 
-class OpenAIVlModel(VlModel[OpenAIVlModelConfig]):
-    default_config = OpenAIVlModelConfig
+class OpenAIVlModel(VlModel):
+    config: OpenAIVlModelConfig
 
     @cached_property
     def _client(self) -> OpenAI:
@@ -70,7 +70,7 @@ class OpenAIVlModel(VlModel[OpenAIVlModelConfig]):
 
         response = self._client.chat.completions.create(**api_kwargs)
 
-        return response.choices[0].message.content  # type: ignore[return-value,no-any-return]
+        return response.choices[0].message.content  # type: ignore[no-any-return]
 
     def query_batch(
         self,
