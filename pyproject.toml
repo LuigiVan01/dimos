@@ -63,13 +63,12 @@ dependencies = [
     "annotation-protocol>=1.4.0",
     "lazy_loader",
     "plum-dispatch==2.5.7",
-    "xxhash>=3.0.0",
     # Logging
     "structlog>=25.5.0,<26",
     "colorlog==6.9.0",
     # Core Msgs
     "opencv-python",
-    "open3d-unofficial-arm>=0.19.0.post9; platform_system == 'Linux' and platform_machine == 'aarch64'",
+    "open3d-unofficial-arm; platform_system == 'Linux' and platform_machine == 'aarch64'",
     "open3d>=0.18.0; platform_system != 'Linux' or platform_machine != 'aarch64'",
     # CLI
     "pydantic-settings>=2.11.0,<3",
@@ -83,13 +82,13 @@ dependencies = [
     # TODO: rerun shouldn't be required but rn its in core (there is NO WAY to use dimos without rerun rn)
     # remove this once rerun is optional in core
     "rerun-sdk>=0.20.0",
-    "dimos-viewer==0.30.0a6.dev99",
+    "dimos-viewer>=0.30.0a2",
     "toolz>=1.1.0",
     "protobuf>=6.33.5,<7",
     "psutil>=7.0.0",
     "sqlite-vec>=0.1.6",
     "lz4>=4.4.5",
-    "open3d-unofficial-arm>=0.19.0.post9",
+    "rpyc>=6.0.0",
 ]
 
 
@@ -293,10 +292,6 @@ sim = [
     "pygame>=2.6.1",
 ]
 
-navigation = [
-    "gtsam-extended>=4.3a1.post1",
-]
-
 # NOTE: jetson-jp6-cuda126 extra is disabled due to 404 errors from wheel URLs
 # The pypi.jetson-ai-lab.io URLs are currently unavailable. Update with working URLs when available.
 # jetson-jp6-cuda126 = [
@@ -333,16 +328,13 @@ docker = [
     "sortedcontainers",
     "PyTurboJPEG",
     "rerun-sdk",
-    "open3d-unofficial-arm>=0.19.0.post9; platform_system == 'Linux' and platform_machine == 'aarch64'",
+    "open3d-unofficial-arm; platform_system == 'Linux' and platform_machine == 'aarch64'",
     "open3d>=0.18.0; platform_system != 'Linux' or platform_machine != 'aarch64'",
 ]
 
 base = [
-    "dimos[agents,web,perception,visualization,sim]",
+    "dimos[agents,web,perception,visualization]",
 ]
-
-[tool.uv]
-override-dependencies = ["pytest==8.3.5"] # because gtsam screwed up their dev dependencies
 
 [tool.ruff]
 line-length = 100
@@ -411,6 +403,8 @@ module = [
     "plum.*",
     "portal",
     "psutil",
+    "rpyc",
+    "rpyc.*",
     "pycuda",
     "pycuda.*",
     "pydrake",
@@ -472,6 +466,4 @@ ignore = [
     "dimos/dashboard/dimos.rbl",
     "dimos/web/dimos_interface/themes.json",
     "dimos/manipulation/manipulation_module.py",
-    "dimos/navigation/smart_nav/modules/*/main.cpp",
-    "dimos/navigation/smart_nav/common/*.hpp",
 ]

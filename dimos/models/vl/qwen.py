@@ -8,6 +8,7 @@ from openai import OpenAI
 from dimos.models.vl.base import VlModel, VlModelConfig
 from dimos.msgs.sensor_msgs.Image import Image
 
+
 class QwenVlModelConfig(VlModelConfig):
     """Configuration for Qwen VL model."""
 
