@@ -1,89 +1,76 @@
-- pr: 1663
-  comment_id: 3002702496
-  author: paul-nechifor
-  file: dimos/agents/mcp/test_mcp_server.py
-  line: 120
-  problem: "_free_port already exists as _find_free_port in the codebase; don't add a 4th copy"
-  solution: "Kept the local _free_port for now — the existing _find_free_port instances are in unrelated demo scripts (demo_mcp_killtest.py, demo_devex.py) and are not importable fixtures yet. Paul's fixture PR #1665 hasn't merged. Once it lands, this can switch to the shared fixture."
-  commit: null
+pr: 1663
+branch: jeff/fix/native_threading
 
-- pr: 1663
-  comment_id: 3002714331
-  author: paul-nechifor
-  file: dimos/agents/mcp/test_mcp_server.py
-  line: 149
-  problem: "Stash already has 3 instances of wait_for_mcp; don't add a 4th that is inlined"
-  solution: "Extracted the inlined wait loop into a local _wait_for_mcp helper. A shared conftest fixture would be better but depends on PR #1665 landing first."
-  commit: null
+responses:
+  - comment_id: 2992188836
+    author: paul-nechifor
+    file: thread_utils.py
+    line: 161
+    comment: "I don't think you need join since you're already join()-ing in stop."
+    solution: "Jeff agreed this was AI redundancy and will remove it. Awaiting code fix — branch has conflicts with dev preventing safe changes."
+    commit: null
 
-- pr: 1663
-  comment_id: 3002720334
-  author: paul-nechifor
-  file: dimos/agents/mcp/test_mcp_server.py
-  line: 159
-  problem: "Server should be stopped even if the test fails — use a fixture"
-  solution: "Wrapped the test body in try/finally so server.stop() is called on any failure. A proper pytest fixture would be cleaner but requires the shared conftest work from PR #1665."
-  commit: null
+  - comment_id: 2992190260
+    author: paul-nechifor
+    file: thread_utils.py
+    comment: "Why do you need _stopped and _stop_lock? You have _stop_event."
+    solution: "Needs Jeff's decision. No reply and no code fix applied."
+    commit: null
 
-- pr: 1663
-  comment_id: 2992188836
-  author: paul-nechifor
-  file: dimos/utils/thread_utils.py
-  line: 184
-  problem: "I don't think you need join since you're already join()-ing in stop."
-  solution: "Addressed in refactoring commit 218b72ebc — merged _stop into stop() to eliminate redundant join paths."
-  commit: 218b72ebc
+  - comment_id: 2992238722
+    author: paul-nechifor
+    file: thread_utils.py
+    comment: "You don't need this. It's already off. If you want ModuleThread to be restartable, then you need to use another thread since threads aren't restartable."
+    solution: "Needs Jeff's decision. No reply and no code fix applied."
+    commit: null
 
-- pr: 1663
-  comment_id: 2992190260
-  author: paul-nechifor
-  file: dimos/utils/thread_utils.py
-  line: 154
-  problem: "Why do you need _stopped and _stop_lock? You have _stop_event."
-  solution: "Addressed in refactoring commit 218b72ebc — simplified stop state management."
-  commit: 218b72ebc
+  - comment_id: 2992244544
+    author: paul-nechifor
+    file: thread_utils.py
+    comment: "Noooooo, don't autostart in the constructor."
+    solution: "Jeff replied suggesting 'ModuleThread().start()' pattern — discussion ongoing. Needs Jeff's decision."
+    commit: null
 
-- pr: 1663
-  comment_id: 2992238722
-  author: paul-nechifor
-  file: dimos/utils/thread_utils.py
-  line: 166
-  problem: "You don't need this. It's already off."
-  solution: "Addressed in refactoring — ModuleThread is not restartable."
-  commit: 218b72ebc
+  - comment_id: 2992248840
+    author: paul-nechifor
+    file: thread_utils.py
+    line: 118
+    comment: "It would be nice if ModuleThread used self.module.__class__.__name__ as the prefix"
+    solution: "Jeff replied with a suggestion but change not yet applied. Awaiting code fix — branch has conflicts with dev preventing safe changes."
+    commit: null
 
-- pr: 1663
-  comment_id: 2992244544
-  author: paul-nechifor
-  file: dimos/utils/thread_utils.py
-  line: 157
-  problem: "Don't autostart in the constructor."
-  solution: "Ongoing discussion — Jeff prefers reducing boilerplate. The constructor does not autostart; callers use thread_start() helper or .start() explicitly."
-  commit: 218b72ebc
+  - comment_id: 2992249798
+    author: paul-nechifor
+    file: thread_utils.py
+    comment: "Why add this if there's a docstring below?"
+    solution: "Needs Jeff's decision. No reply and no code fix applied."
+    commit: null
 
-- pr: 1663
-  comment_id: 2992248840
-  author: paul-nechifor
-  file: dimos/utils/thread_utils.py
-  line: 133
-  problem: "ModuleThread should use self.module.__class__.__name__ as prefix for useful debugging names."
-  solution: "Jeff agreed and applied the suggestion."
-  commit: f62a0b057
+  - comment_id: 2992340306
+    author: paul-nechifor
+    file: module.py
+    comment: "_close_module is a remnant... could be deleted if you want and moved into def stop."
+    solution: "Jeff agreed ('happily! I thought it was a rpc vs non-rpc thing') but change not yet applied. Awaiting code fix — branch has conflicts with dev preventing safe changes."
+    commit: null
 
-- pr: 1663
-  comment_id: 2992249798
-  author: paul-nechifor
-  file: dimos/utils/thread_utils.py
-  line: 114
-  problem: "Why add this if there's a docstring below?"
-  solution: "Jeff agreed and removed the redundant comment."
-  commit: f62a0b057
+  - comment_id: 3002702496
+    author: paul-nechifor
+    file: test_mcp_server.py
+    line: 120
+    comment: "This already exists as _find_free_port in the codebase."
+    solution: "Needs Jeff's decision. No reply and no code fix applied."
+    commit: null
 
-- pr: 1663
-  comment_id: 2992340306
-  author: paul-nechifor
-  file: dimos/core/module.py
-  line: 131
-  problem: "_close_module is a remnant from the old Module class hierarchy"
-  solution: "Jeff acknowledged and cleaned this up."
-  commit: a1586f326
+  - comment_id: 3002714331
+    author: paul-nechifor
+    file: test_mcp_server.py
+    comment: "Stash already has 3 instances of this exact sequence. Please don't add a 4th that is inlined."
+    solution: "Needs Jeff's decision. No reply and no code fix applied."
+    commit: null
+
+  - comment_id: 3002720334
+    author: paul-nechifor
+    file: test_mcp_server.py
+    comment: "The server should be stopped even if the test fails. The best way to do it is to use a fixture for the mcp server."
+    solution: "Needs Jeff's decision. No reply and no code fix applied."
+    commit: null
