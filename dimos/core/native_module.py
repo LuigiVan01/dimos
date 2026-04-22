@@ -63,8 +63,9 @@ from dimos.utils.logging_config import setup_logger
 # the import out of the inner function avoids re-importing on every start().
 if sys.platform.startswith("linux"):
     import ctypes
+    from ctypes.util import find_library
 
-    _LIBC = ctypes.CDLL("libc.so.6", use_errno=True)
+    _LIBC = ctypes.CDLL(find_library("c"), use_errno=True)
     _PR_SET_PDEATHSIG = 1
 
     def _child_preexec_linux() -> None:
