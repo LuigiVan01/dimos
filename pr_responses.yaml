@@ -1,0 +1,53 @@
+- pr: 1875
+  comment_id: 3098097885
+  author: paul-nechifor
+  file: dimos/core/native_module.py
+  line: 67
+  problem: "Suggested using find_library('c') instead of hardcoded libc.so.6"
+  solution: "Applied suggestion — now uses ctypes.util.find_library('c') for portability."
+  commit: 987f24468
+
+- pr: 1875
+  comment_id: 3098133214
+  author: paul-nechifor
+  file: dimos/core/native_module.py
+  line: 62
+  problem: "Code looks LLM-generated with unnecessary explanations. Suggested simplified version."
+  solution: "The function has already been simplified to a minimal implementation. The find_library fix was applied separately."
+  commit: 987f24468
+
+- pr: 1875
+  comment_id: 3098034329
+  author: leshy
+  file: dimos/core/native_module.py
+  line: 71
+  problem: "why was this killed? (referring to JSON logging support removal)"
+  solution: "Jeff responded (comment 3114603905): he thought it was simplification based on prior PR feedback. Leshy clarified (comment 3116100390): JSON logging is dimos-wide default, not native-module-specific. Needs Jeff's decision on whether to restore it."
+  commit: null
+
+- pr: 1875
+  comment_id: 3098044443
+  author: leshy
+  file: dimos/core/native_module.py
+  line: 355
+  problem: "you are introducing magical env var, please use config system and global config"
+  solution: "Architectural feedback — needs Jeff's input on whether to use the config system instead of env vars for DIMOS_NATIVE_BUILD. Deferring to Jeff."
+  commit: null
+
+- pr: 1875
+  comment_id: 3098047253
+  author: leshy
+  file: dimos/core/native_module.py
+  line: 358
+  problem: "we do want autobuild to work in prod on the first run, in case of nix this will let us distribute binaries but intelligently locally build when needed"
+  solution: "Design discussion about build behavior in production. Current implementation skips build when DIMOS_NATIVE_BUILD is not set. Needs Jeff's input on the default behavior."
+  commit: null
+
+- pr: 1875
+  comment_id: 3098069742
+  author: leshy
+  file: dimos/core/native_module.py
+  line: 374
+  problem: "We shouldn't by default run build system change detection for all native modules all of the time in dev, this is expensive, toggle this per module if you are developing it."
+  solution: "Design feedback about performance — running nix/build change detection for all native modules adds startup overhead. Needs Jeff's decision on making this opt-in per module."
+  commit: null
