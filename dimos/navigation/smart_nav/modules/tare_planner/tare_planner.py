@@ -57,6 +57,12 @@ class TarePlanner(NativeModule):
 
     config: TarePlannerConfig
 
+    def start(self) -> None:
+        super().start()
+
+    def stop(self) -> None:
+        super().stop()
+
     registered_scan: In[PointCloud2]
     odometry: In[Odometry]
     way_point: Out[PointStamped]

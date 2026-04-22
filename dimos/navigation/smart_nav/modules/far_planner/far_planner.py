@@ -120,6 +120,12 @@ class FarPlanner(NativeModule):
 
     config: FarPlannerConfig
 
+    def start(self) -> None:
+        super().start()
+
+    def stop(self) -> None:
+        super().stop()
+
     terrain_map_ext: In[PointCloud2]
     terrain_map: In[PointCloud2]
     registered_scan: In[PointCloud2]

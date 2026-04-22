@@ -106,6 +106,12 @@ class PathFollower(NativeModule):
 
     config: PathFollowerConfig
 
+    def start(self) -> None:
+        super().start()
+
+    def stop(self) -> None:
+        super().stop()
+
     path: In[NavPath]
     odometry: In[Odometry]
     cmd_vel: Out[Twist]

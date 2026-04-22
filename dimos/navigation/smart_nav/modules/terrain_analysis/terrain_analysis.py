@@ -154,6 +154,12 @@ class TerrainAnalysis(NativeModule):
 
     config: TerrainAnalysisConfig
 
+    def start(self) -> None:
+        super().start()
+
+    def stop(self) -> None:
+        super().stop()
+
     registered_scan: In[PointCloud2]
     odometry: In[Odometry]
     terrain_map: Out[PointCloud2]

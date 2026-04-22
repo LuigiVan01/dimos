@@ -241,6 +241,12 @@ class LocalPlanner(NativeModule):
 
     config: LocalPlannerConfig
 
+    def start(self) -> None:
+        super().start()
+
+    def stop(self) -> None:
+        super().stop()
+
     # --- Inputs ---
     registered_scan: In[PointCloud2]
     odometry: In[Odometry]
