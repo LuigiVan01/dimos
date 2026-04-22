@@ -27,7 +27,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dimos.core.docker_module import DockerModuleConfig, DockerModuleProxy, is_docker_module
+from dimos.core.docker_module import DockerModuleConfig, DockerModuleProxy
 from dimos.core.module import Module
 from dimos.core.rpc_client import RpcCall
 from dimos.core.stream import Out
@@ -43,8 +43,9 @@ class FakeDockerConfig(DockerModuleConfig):
     docker_restart_policy: str = "no"
 
 
-class FakeDockerModule(Module["FakeDockerConfig"]):
-    default_config = FakeDockerConfig
+class FakeDockerModule(Module):
+    config: "FakeDockerConfig"
+    deployment = "docker"
     output: Out[str]
 
 
@@ -55,22 +56,18 @@ class FakeRegularModule(Module):
 # -- Tests -------------------------------------------------------------------
 
 
-class TestIsDockerModule:
-    def test_docker_module_detected(self):
-        assert is_docker_module(FakeDockerModule) is True
+class TestDeploymentClassVar:
+    def test_docker_module_has_docker_deployment(self):
+        assert FakeDockerModule.deployment == "docker"
 
-    def test_regular_module_not_detected(self):
-        assert is_docker_module(FakeRegularModule) is False
+    def test_regular_module_has_python_deployment(self):
+        assert FakeRegularModule.deployment == "python"
 
-    def test_plain_class_not_detected(self):
-        assert is_docker_module(str) is False
-
-    def test_no_default_config(self):
+    def test_bare_module_has_python_deployment(self):
         class Bare(Module):
             pass
 
-        # Module has default_config = ModuleConfig, which is not DockerModuleConfig
-        assert is_docker_module(Bare) is False
+        assert Bare.deployment == "python"
 
 
 class TestModuleCoordinatorDockerRouting:
@@ -94,7 +91,7 @@ class TestModuleCoordinatorDockerRouting:
 
     def test_deploy_routes_regular_module_not_to_docker(self, dimos_cluster):
         # Regular modules should not go through DockerModuleProxy
-        assert not is_docker_module(FakeRegularModule)
+        assert FakeRegularModule.deployment == "python"
 
     @patch("dimos.core.docker_module.DockerModuleProxy")
     def test_deploy_parallel_deploys_docker_module(self, mock_proxy_cls, dimos_cluster):
@@ -104,7 +101,7 @@ class TestModuleCoordinatorDockerRouting:
         specs = [
             (FakeDockerModule, (), {}),
         ]
-        results = dimos_cluster.deploy_parallel(specs)
+        results = dimos_cluster.deploy_parallel(specs, {})
 
         mock_proxy_cls.assert_called_once()
         assert results[0] is mock_dm

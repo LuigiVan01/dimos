@@ -24,6 +24,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from dimos.core.coordination.worker_manager_docker import WorkerManagerDocker
+from dimos.core.coordination.worker_manager_python import WorkerManagerPython
+from dimos.core.global_config import GlobalConfig
 from dimos.utils.safe_thread_map import ExceptionGroup
 
 
@@ -33,9 +36,6 @@ class TestWorkerManagerDockerPartialFailure:
     @patch("dimos.core.docker_module.DockerModuleProxy")
     def test_middle_module_fails_stops_siblings(self, mock_docker_module_cls):
         """Deploy 3 modules where the middle one fails. The other two must be stopped."""
-        from dimos.core.global_config import GlobalConfig
-        from dimos.core.worker_manager_docker import WorkerManagerDocker
-
         mod_a = MagicMock(name="ModuleA")
         mod_c = MagicMock(name="ModuleC")
 
@@ -50,17 +50,18 @@ class TestWorkerManagerDockerPartialFailure:
 
         mock_docker_module_cls.side_effect = fake_constructor
 
-        FakeA = type("A", (), {})
-        FakeB = type("B", (), {})
-        FakeC = type("C", (), {})
+        FakeA = type("A", (), {"name": "A"})
+        FakeB = type("B", (), {"name": "B"})
+        FakeC = type("C", (), {"name": "C"})
 
-        with pytest.raises(ExceptionGroup, match="docker deploy_parallel failed") as exc_info:
+        with pytest.raises(ExceptionGroup, match="safe_thread_map failed") as exc_info:
             WorkerManagerDocker(g=GlobalConfig()).deploy_parallel(
                 [
                     (FakeA, (), {}),
                     (FakeB, (), {}),
                     (FakeC, (), {}),
-                ]
+                ],
+                {},
             )
 
         assert len(exc_info.value.exceptions) == 1
@@ -73,9 +74,6 @@ class TestWorkerManagerDockerPartialFailure:
     @patch("dimos.core.docker_module.DockerModuleProxy")
     def test_multiple_failures_raises_exception_group(self, mock_docker_module_cls):
         """Deploy 3 modules where two fail. Should raise ExceptionGroup with both errors."""
-        from dimos.core.global_config import GlobalConfig
-        from dimos.core.worker_manager_docker import WorkerManagerDocker
-
         mod_a = MagicMock(name="ModuleA")
 
         barrier = threading.Barrier(3, timeout=5)
@@ -91,17 +89,18 @@ class TestWorkerManagerDockerPartialFailure:
 
         mock_docker_module_cls.side_effect = fake_constructor
 
-        FakeA = type("A", (), {})
-        FakeB = type("B", (), {})
-        FakeC = type("C", (), {})
+        FakeA = type("A", (), {"name": "A"})
+        FakeB = type("B", (), {"name": "B"})
+        FakeC = type("C", (), {"name": "C"})
 
-        with pytest.raises(ExceptionGroup, match="docker deploy_parallel failed") as exc_info:
+        with pytest.raises(ExceptionGroup, match="safe_thread_map failed") as exc_info:
             WorkerManagerDocker(g=GlobalConfig()).deploy_parallel(
                 [
                     (FakeA, (), {}),
                     (FakeB, (), {}),
                     (FakeC, (), {}),
-                ]
+                ],
+                {},
             )
 
         assert len(exc_info.value.exceptions) == 2
@@ -115,9 +114,6 @@ class TestWorkerManagerDockerPartialFailure:
     @patch("dimos.core.docker_module.DockerModuleProxy")
     def test_all_succeed_no_stops(self, mock_docker_module_cls):
         """When all deployments succeed, no modules should be stopped."""
-        from dimos.core.global_config import GlobalConfig
-        from dimos.core.worker_manager_docker import WorkerManagerDocker
-
         mocks = [MagicMock(name=f"Mod{i}") for i in range(3)]
 
         def fake_constructor(cls, *args, **kwargs):
@@ -125,16 +121,17 @@ class TestWorkerManagerDockerPartialFailure:
 
         mock_docker_module_cls.side_effect = fake_constructor
 
-        FakeA = type("A", (), {})
-        FakeB = type("B", (), {})
-        FakeC = type("C", (), {})
+        FakeA = type("A", (), {"name": "A"})
+        FakeB = type("B", (), {"name": "B"})
+        FakeC = type("C", (), {"name": "C"})
 
         results = WorkerManagerDocker(g=GlobalConfig()).deploy_parallel(
             [
                 (FakeA, (), {}),
                 (FakeB, (), {}),
                 (FakeC, (), {}),
-            ]
+            ],
+            {},
         )
 
         assert len(results) == 3
@@ -144,9 +141,6 @@ class TestWorkerManagerDockerPartialFailure:
     @patch("dimos.core.docker_module.DockerModuleProxy")
     def test_stop_failure_does_not_mask_deploy_error(self, mock_docker_module_cls):
         """If stop() itself raises during cleanup, the original deploy error still propagates."""
-        from dimos.core.global_config import GlobalConfig
-        from dimos.core.worker_manager_docker import WorkerManagerDocker
-
         mod_a = MagicMock(name="ModuleA")
         mod_a.stop.side_effect = OSError("stop failed")
 
@@ -160,12 +154,12 @@ class TestWorkerManagerDockerPartialFailure:
 
         mock_docker_module_cls.side_effect = fake_constructor
 
-        FakeA = type("A", (), {})
-        FakeB = type("B", (), {})
+        FakeA = type("A", (), {"name": "A"})
+        FakeB = type("B", (), {"name": "B"})
 
-        with pytest.raises(ExceptionGroup, match="docker deploy_parallel failed"):
+        with pytest.raises(ExceptionGroup, match="safe_thread_map failed"):
             WorkerManagerDocker(g=GlobalConfig()).deploy_parallel(
-                [(FakeA, (), {}), (FakeB, (), {})]
+                [(FakeA, (), {}), (FakeB, (), {})], {}
             )
 
         # stop was attempted despite it raising
@@ -173,13 +167,10 @@ class TestWorkerManagerDockerPartialFailure:
 
 
 class TestWorkerManagerPartialFailure:
-    """WorkerManager.deploy_parallel must clean up successful RPCClients when one fails."""
+    """WorkerManager.deploy_parallel must shut down workers when a deploy fails."""
 
     def test_middle_module_fails_cleans_up_siblings(self):
-        from dimos.core.global_config import GlobalConfig
-        from dimos.core.worker_manager import WorkerManager
-
-        manager = WorkerManager(g=GlobalConfig(n_workers=2))
+        manager = WorkerManagerPython(g=GlobalConfig(n_workers=2))
 
         mock_workers = [MagicMock(name=f"Worker{i}") for i in range(2)]
         for w in mock_workers:
@@ -199,30 +190,21 @@ class TestWorkerManagerPartialFailure:
         for w in mock_workers:
             w.deploy_module = fake_deploy_module
 
-        FakeA = type("A", (), {})
-        FakeB = type("B", (), {})
-        FakeC = type("C", (), {})
+        FakeA = type("A", (), {"name": "A"})
+        FakeB = type("B", (), {"name": "B"})
+        FakeC = type("C", (), {"name": "C"})
 
-        rpc_clients_created: list[MagicMock] = []
-
-        with patch("dimos.core.worker_manager.RPCClient") as mock_rpc_cls:
-
-            def make_rpc(actor, cls):
-                client = MagicMock(name=f"rpc_{cls.__name__}")
-                rpc_clients_created.append(client)
-                return client
-
-            mock_rpc_cls.side_effect = make_rpc
-
-            with pytest.raises(ExceptionGroup, match="worker deploy_parallel failed"):
+        with patch("dimos.core.coordination.worker_manager_python.RPCClient"):
+            with pytest.raises(ExceptionGroup, match="safe_thread_map failed"):
                 manager.deploy_parallel(
                     [
                         (FakeA, (), {}),
                         (FakeB, (), {}),
                         (FakeC, (), {}),
-                    ]
+                    ],
+                    {},
                 )
 
-        # Every successfully-created RPC client must have been cleaned up exactly once
-        for client in rpc_clients_created:
-            client.stop_rpc_client.assert_called_once()
+        # Workers must have been shut down
+        for w in mock_workers:
+            w.stop.assert_called_once()

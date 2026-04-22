@@ -24,9 +24,9 @@ import signal
 import subprocess
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, get_type_hints
 
-from dimos.core.module import ModuleConfig
+from dimos.core.module import ModuleBase, ModuleConfig
 from dimos.core.rpc_client import ModuleProxyProtocol, RpcCall
 from dimos.protocol.rpc.pubsubrpc import LCMRPC
 from dimos.utils.logging_config import setup_logger
@@ -135,11 +135,11 @@ class DockerModuleProxy(ModuleProxyProtocol):
 
     config: DockerModuleConfig
 
-    def __init__(self, module_class: type[Module], *args: Any, **kwargs: Any) -> None:
-        config_class = getattr(module_class, "default_config", DockerModuleConfig)
+    def __init__(self, module_class: type[ModuleBase], *args: Any, **kwargs: Any) -> None:
+        config_class = get_type_hints(module_class).get("config", DockerModuleConfig)
         if not issubclass(config_class, DockerModuleConfig):
             raise TypeError(
-                f"{module_class.__name__}.default_config must be a DockerModuleConfig subclass, "
+                f"{module_class.__name__} config must be a DockerModuleConfig subclass, "
                 f"got {config_class.__name__}"
             )
         config = config_class(**kwargs)
@@ -163,10 +163,8 @@ class DockerModuleProxy(ModuleProxyProtocol):
             rpc_timeouts=self.config.rpc_timeouts,
             default_rpc_timeout=self.config.default_rpc_timeout,
         )
-        self.rpcs = set(module_class.rpcs.keys())  # type: ignore[attr-defined]
-        self.rpc_calls: list[str] = getattr(module_class, "rpc_calls", [])
+        self.rpcs = set(module_class.rpcs.keys())
         self._unsub_fns: list[Callable[[], None]] = []
-        self._bound_rpc_calls: dict[str, RpcCall] = {}
 
     def build(self) -> None:
         """Build/pull docker image, launch container, wait for RPC readiness.
@@ -229,7 +227,7 @@ class DockerModuleProxy(ModuleProxyProtocol):
             raise
 
     def get_rpc_method_names(self) -> list[str]:
-        return self.rpc_calls
+        return list(self.rpcs)
 
     def set_rpc_method(self, method: str, callable: RpcCall) -> None:
         callable.set_rpc(self.rpc)
@@ -294,6 +292,9 @@ class DockerModuleProxy(ModuleProxyProtocol):
             "image": cfg.docker_image,
             "running": self._running.is_set() and _is_container_running(cfg, self._container_name),
         }
+
+    def is_running(self) -> bool:
+        return self._running.is_set() and _is_container_running(self.config, self._container_name)
 
     def tail_logs(self, n: int = 200) -> str:
         return _tail_logs(self.config, self._container_name, n=n)
@@ -469,7 +470,7 @@ class DockerModuleProxy(ModuleProxyProtocol):
 
             try:
                 self.rpc.call_sync(
-                    f"{self.remote_name}/get_rpc_method_names",
+                    f"{self.remote_name}/get_skills",
                     ([], {}),
                     rpc_timeout=3.0,  # short timeout for polling readiness
                 )
