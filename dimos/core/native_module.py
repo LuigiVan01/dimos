@@ -111,7 +111,7 @@ class NativeModuleConfig(ModuleConfig):
 _NativeConfig = TypeVar("_NativeConfig", bound=NativeModuleConfig, default=NativeModuleConfig)
 
 
-class NativeModule(Module[_NativeConfig]):
+class NativeModule(Module):
     """Module that wraps a native executable as a managed subprocess.
 
     Subclass this, declare In/Out ports, and set ``default_config`` to a
@@ -155,6 +155,12 @@ class NativeModule(Module[_NativeConfig]):
             log_json=self.config.log_format == LogFormat.JSON,
         )
         self._proc.start()
+
+    def stop(self) -> None:
+        if self._proc is not None:
+            self._proc.stop()
+            self._proc = None
+        super().stop()
 
     def _resolve_paths(self) -> None:
         """Resolve relative ``cwd`` and ``executable`` against the subclass's source file."""

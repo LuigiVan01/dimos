@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
 from typing import overload
+import warnings
 
 warnings.filterwarnings("ignore", message="Cython evaluation.*unavailable", category=UserWarning)
 
@@ -35,11 +35,9 @@ from dimos.utils.data import get_data
 class TorchReIDModelConfig(EmbeddingModelConfig):
     model_name: str = "osnet_x1_0"
 
-
 class TorchReIDModel(EmbeddingModel, LocalModel):
     """TorchReID embedding model for person re-identification."""
 
-    default_config = TorchReIDModelConfig
     config: TorchReIDModelConfig
 
     @cached_property
