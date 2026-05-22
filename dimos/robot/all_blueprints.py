@@ -16,6 +16,7 @@
 # Run `pytest dimos/robot/test_all_blueprints_generation.py` to regenerate.
 
 all_blueprints = {
+    "agibot-x2-basic": "dimos.robot.agibot.x2_ultra.blueprints.basic.agibot_x2_basic:agibot_x2_basic",
     "alfred-nav": "dimos.robot.diy.alfred.blueprints.alfred_nav:alfred_nav",
     "coordinator-basic": "dimos.control.blueprints.basic:coordinator_basic",
     "coordinator-cartesian-ik-mock": "dimos.control.blueprints.teleop:coordinator_cartesian_ik_mock",
@@ -217,5 +218,6 @@ all_modules = {
     "wavefront-frontier-explorer": "dimos.navigation.frontier_exploration.wavefront_frontier_goal_selector.WavefrontFrontierExplorer",
     "web-input": "dimos.agents.web_human_input.WebInput",
     "websocket-vis-module": "dimos.web.websocket_vis.websocket_vis_module.WebsocketVisModule",
+    "x2-connection": "dimos.robot.agibot.x2_ultra.connection.X2Connection",
     "zed-camera": "dimos.hardware.sensors.camera.zed.camera.ZEDCamera",
 }
