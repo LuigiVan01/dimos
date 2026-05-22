@@ -33,6 +33,7 @@ from dimos.msgs.sensor_msgs.CameraInfo import CameraInfo
 from dimos.msgs.sensor_msgs.Image import Image, ImageFormat
 from dimos.msgs.sensor_msgs.Imu import Imu
 from dimos.msgs.sensor_msgs.PointCloud2 import PointCloud2
+from dimos.msgs.sensor_msgs.StampedPointCloud import StampedPointCloud
 from dimos.spec.perception import IMU, Camera, Lidar, Pointcloud
 from dimos.utils.logging_config import setup_logger
 
@@ -146,38 +147,107 @@ def _ros_image_to_dimos(msg: Any) -> Image:
     return Image(data=arr, format=fmt, frame_id=msg.header.frame_id, ts=ts)
 
 
-def _ros_pointcloud2_to_dimos(msg: Any) -> PointCloud2:
-    """Convert a ROS2 sensor_msgs/PointCloud2 to a dimos PointCloud2.
+# ROS PointField datatype enum → numpy dtype. Native byte order is fine: X2 hosts
+# are little-endian and ROS sets is_bigendian=false, so native = wire.
+_ROS_PF_DTYPE = {
+    1: np.int8,
+    2: np.uint8,
+    3: np.int16,
+    4: np.uint16,
+    5: np.int32,
+    6: np.uint32,
+    7: np.float32,
+    8: np.float64,
+}
 
-    Handles any point_step by stride-indexing float32 values at the x/y/z
-    field offsets (offsets must be 4-byte aligned, which is standard).
+
+def _pc2_fields(msg: Any, names: tuple[str, ...]) -> dict[str, np.ndarray]:
+    """Read named PointFields from a ROS PointCloud2 as numpy arrays.
+
+    Returns {name: array} for fields present with a known datatype; missing or
+    unknown-type fields are omitted. Reads by declared offset/datatype, so it
+    handles any point_step layout (including padding gaps).
     """
+    raw = bytes(msg.data)
+    step = msg.point_step
+    n_points = msg.width * msg.height
+    fields = {f.name: f for f in msg.fields}
+
+    out: dict[str, np.ndarray] = {}
+    for name in names:
+        f = fields.get(name)
+        if f is None:
+            continue
+        np_dtype = _ROS_PF_DTYPE.get(f.datatype)
+        if np_dtype is None:
+            continue
+        spec: list[tuple[str, Any]] = []
+        if f.offset > 0:
+            spec.append(("_pre", f"V{f.offset}"))
+        spec.append(("val", np_dtype))
+        post = step - f.offset - np.dtype(np_dtype).itemsize
+        if post > 0:
+            spec.append(("_post", f"V{post}"))
+        out[name] = np.frombuffer(raw, dtype=np.dtype(spec), count=n_points)["val"]
+    return out
+
+
+def _ros_pointcloud2_to_dimos(msg: Any) -> PointCloud2:
+    """Convert a ROS2 sensor_msgs/PointCloud2 to a dimos PointCloud2 (XYZ only)."""
     ts = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
     n_points = msg.width * msg.height
     if n_points == 0:
         return PointCloud2(frame_id=msg.header.frame_id, ts=ts)
 
-    offsets = {f.name: f.offset for f in msg.fields}
-    x_off = offsets.get("x", 0)
-    y_off = offsets.get("y", 4)
-    z_off = offsets.get("z", 8)
-    step = msg.point_step
-    step_f32 = step // 4
+    f = _pc2_fields(msg, ("x", "y", "z"))
+    if not all(k in f for k in ("x", "y", "z")):
+        raise ValueError("PointCloud2 missing x, y, or z field")
 
-    # Interpret entire buffer as float32 then stride-index each field
-    raw_f32 = np.frombuffer(bytes(msg.data), dtype=np.float32)
-    xs = raw_f32[x_off // 4 :: step_f32][:n_points]
-    ys = raw_f32[y_off // 4 :: step_f32][:n_points]
-    zs = raw_f32[z_off // 4 :: step_f32][:n_points]
-
-    pts = np.column_stack([xs, ys, zs]).astype(np.float64)
-    mask = np.isfinite(pts).all(axis=1)
-    pts = pts[mask]
+    pts = np.column_stack([f["x"], f["y"], f["z"]]).astype(np.float64)
+    pts = pts[np.isfinite(pts).all(axis=1)]
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(pts)
-
     return PointCloud2(pointcloud=pcd, frame_id=msg.header.frame_id, ts=ts)
+
+
+def _ros_lidar_to_stamped(msg: Any) -> StampedPointCloud:
+    """Convert the X2's chest-LiDAR PointCloud2 to a StampedPointCloud.
+
+    Keeps the per-point intensity and time that _ros_pointcloud2_to_dimos drops, so
+    FAST-LIO can motion-deskew the scan.
+
+    The RoboSense per-point ``timestamp`` is on the LiDAR's own clock, not the ROS
+    header / IMU clock, so we store frame-relative offsets (point time minus the
+    frame's earliest) — clock-agnostic, and the offset FAST-LIO actually needs. The
+    message ``ts`` keeps the ROS header stamp, which is co-clocked with the IMU.
+    """
+    ts = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+    n_points = msg.width * msg.height
+    if n_points == 0:
+        return StampedPointCloud(frame_id=msg.header.frame_id, ts=ts)
+
+    f = _pc2_fields(msg, ("x", "y", "z", "intensity", "timestamp"))
+    if not all(k in f for k in ("x", "y", "z")):
+        raise ValueError("X2 LiDAR PointCloud2 missing x, y, or z field")
+
+    pts = np.column_stack([f["x"], f["y"], f["z"]]).astype(np.float32)
+    mask = np.isfinite(pts).all(axis=1)
+    pts = pts[mask]
+
+    intensities = f["intensity"].astype(np.float32)[mask] if "intensity" in f else None
+    times = None
+    if "timestamp" in f:
+        t = f["timestamp"].astype(np.float64)[mask]
+        times = (t - t.min()).astype(np.float32) if t.size else t.astype(np.float32)
+
+    return StampedPointCloud.from_numpy(
+        pts,
+        frame_id=msg.header.frame_id,
+        timestamp=ts,
+        intensities=intensities,
+        times=times,
+    )
 
 
 def _ros_camera_info_to_dimos(msg: Any) -> CameraInfo:
@@ -235,7 +305,7 @@ class X2Connection(X2ConnectionBase, Camera, Pointcloud, IMU, Lidar):
       color_image  — RGB image from head RGBD camera
       camera_info  — camera intrinsics (auto-read from robot)
       pointcloud   — depth point cloud from head RGBD camera
-      lidar        — chest LiDAR point cloud
+      lidar        — chest LiDAR cloud with per-point time/intensity
       imu          — chest IMU
 
     Inputs:
@@ -249,7 +319,7 @@ class X2Connection(X2ConnectionBase, Camera, Pointcloud, IMU, Lidar):
     depth_image: Out[Image]
     depth_camera_info: Out[CameraInfo]
     pointcloud: Out[PointCloud2]
-    lidar: Out[PointCloud2]
+    lidar: Out[StampedPointCloud]
     imu: Out[Imu]
 
     _ros_node: Any = None
@@ -445,7 +515,7 @@ class X2Connection(X2ConnectionBase, Camera, Pointcloud, IMU, Lidar):
         self.pointcloud.publish(_ros_pointcloud2_to_dimos(msg))
 
     def _on_lidar(self, msg: Any) -> None:
-        self.lidar.publish(_ros_pointcloud2_to_dimos(msg))
+        self.lidar.publish(_ros_lidar_to_stamped(msg))
 
     def _on_imu(self, msg: Any) -> None:
         self.imu.publish(_ros_imu_to_dimos(msg))
