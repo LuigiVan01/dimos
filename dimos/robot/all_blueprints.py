@@ -219,5 +219,6 @@ all_modules = {
     "web-input": "dimos.agents.web_human_input.WebInput",
     "websocket-vis-module": "dimos.web.websocket_vis.websocket_vis_module.WebsocketVisModule",
     "x2-connection": "dimos.robot.agibot.x2_ultra.connection.X2Connection",
+    "x2-connection-base": "dimos.robot.agibot.x2_ultra.connection.X2ConnectionBase",
     "zed-camera": "dimos.hardware.sensors.camera.zed.camera.ZEDCamera",
 }

@@ -433,8 +433,6 @@ class X2Connection(X2ConnectionBase, Camera, Pointcloud, IMU, Lidar):
         else:
             logger.error("X2Connection: input source registration timed out")
 
-    # --- ROS2 sensor callbacks ---
-
     def _on_rgb_image(self, msg: Any) -> None:
         image = _ros_image_to_dimos(msg)
         self.color_image.publish(image)
@@ -454,8 +452,6 @@ class X2Connection(X2ConnectionBase, Camera, Pointcloud, IMU, Lidar):
 
     def _on_camera_info(self, msg: Any) -> None:
         self.camera_info.publish(_ros_camera_info_to_dimos(msg))
-
-    # --- Motion control ---
 
     @rpc
     def move(self, twist: Twist, duration: float = 0.0) -> bool:
@@ -503,8 +499,6 @@ class X2Connection(X2ConnectionBase, Camera, Pointcloud, IMU, Lidar):
         Returns None if no frame has been received yet.
         """
         return self._latest_video_frame
-
-    # --- Helpers ---
 
     @staticmethod
     def _import_msg(module: str, cls: str) -> Any:
