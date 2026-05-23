@@ -20,6 +20,8 @@
 #include <chrono>
 #include <csignal>
 #include <cstdio>
+#include <memory>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -28,6 +30,8 @@
 #include "fast_lio.hpp"
 #include "fast_lio_debug.hpp"
 #include "fastlio_publisher.hpp"
+#include "lcm_stream_source.hpp"
+#include "lidar_imu_source.hpp"
 #include "livox_driver_source.hpp"
 
 // Signal-handler state must cross the C boundary, so it stays file-scope.
@@ -36,11 +40,12 @@ static void signal_handler(int /*sig*/) { g_running.store(false); }
 
 static void print_banner(bool debug,
                          const std::string& config_path,
+                         const std::string& input_mode,
                          const CloudFilterConfig& filter_cfg,
-                         const LivoxDriverSource::Config& driver_cfg,
                          const FastlioPublisher::Config& pub_cfg) {
     if (!debug) return;
-    std::printf("[fastlio2] Starting FAST-LIO2 + Livox Mid-360 native module\n");
+    std::printf("[fastlio2] Starting FAST-LIO2 native module (input_mode=%s)\n",
+                input_mode.c_str());
     if (pub_cfg.init_pose.has_offset()) {
         const auto& ip = pub_cfg.init_pose;
         std::printf("[fastlio2] init_pose: xyz=(%.3f, %.3f, %.3f) quat=(%.4f, %.4f, %.4f, %.4f)\n",
@@ -53,9 +58,6 @@ static void print_banner(bool debug,
     std::printf("[fastlio2] global_map topic: %s\n",
                 pub_cfg.map_topic.empty() ? "(disabled)" : pub_cfg.map_topic.c_str());
     std::printf("[fastlio2] config: %s\n", config_path.c_str());
-    std::printf("[fastlio2] host_ip: %s  lidar_ip: %s  frequency: %.1f Hz\n",
-                driver_cfg.host_ip.c_str(), driver_cfg.lidar_ip.c_str(),
-                driver_cfg.frame_frequency_hz);
     std::printf("[fastlio2] pointcloud_freq: %.1f Hz  odom_freq: %.1f Hz\n",
                 pub_cfg.pointcloud_freq, pub_cfg.odom_freq);
     std::printf("[fastlio2] voxel_size: %.3f  sor_mean_k: %d  sor_stddev: %.1f\n",
@@ -66,7 +68,7 @@ static void print_banner(bool debug,
 }
 
 
-static void run_loop(LivoxDriverSource& source,
+static void run_loop(LidarImuSource& source,
                      FastLio& fast_lio,
                      const CloudFilterConfig& filter_cfg,
                      FastlioPublisher& publisher,
@@ -77,6 +79,11 @@ static void run_loop(LivoxDriverSource& source,
     while (g_running.load()) {
         const auto loop_start = std::chrono::high_resolution_clock::now();
         const auto now = std::chrono::steady_clock::now();
+
+        // Drain ALL pending LCM messages each iteration. Critical for stream
+        // mode (input arrives via subscriptions); harmless for livox mode
+        // (no subscriptions, loop exits immediately).
+        while (lcm.handleTimeout(0) > 0) {}
 
         source.tick(now);
         fast_lio.process();
@@ -94,8 +101,6 @@ static void run_loop(LivoxDriverSource& source,
             }
             publisher.publish_odom_if_due(now, fast_lio.get_odometry(), ts);
         }
-
-        lcm.handleTimeout(0);
 
         const auto loop_end = std::chrono::high_resolution_clock::now();
         const auto elapsed_ms =
@@ -123,10 +128,10 @@ int main(int argc, char** argv) {
     const bool debug = mod.arg_bool("debug", false);
     fastlio_debug = debug;  // FAST-LIO core's verbosity global
 
-    const auto driver_cfg = LivoxDriverSource::Config::from_args(mod);
-    const auto pub_cfg    = FastlioPublisher::Config::from_args(mod);  // throws if no output topic
+    const auto pub_cfg = FastlioPublisher::Config::from_args(mod); 
+    const std::string input_mode = mod.arg("input_mode", "livox");
 
-    print_banner(debug, config_path, filter_cfg, driver_cfg, pub_cfg);
+    print_banner(debug, config_path, input_mode, filter_cfg, pub_cfg);
 
     std::signal(SIGTERM, signal_handler);
     std::signal(SIGINT,  signal_handler);
@@ -144,16 +149,35 @@ int main(int argc, char** argv) {
     if (debug) std::printf("[fastlio2] FAST-LIO initialized.\n");
 
     FastlioPublisher publisher(lcm, pub_cfg);
-    LivoxDriverSource source(&fast_lio, driver_cfg, g_running);
 
-    if (!source.start()) return 1;
-    if (debug) std::printf("[fastlio2] SDK started, waiting for device...\n");
+    // Pick the input path. `livox` is the default; `stream` consumes LCM
+    // topics fed by an upstream connection module (e.g. X2Connection).
+    std::unique_ptr<LidarImuSource> source;
+    if (input_mode == "livox") {
+        auto driver_cfg = LivoxDriverSource::Config::from_args(mod);
+        if (debug) std::printf("[fastlio2] livox: host_ip=%s lidar_ip=%s frequency=%.1f Hz\n",
+                               driver_cfg.host_ip.c_str(), driver_cfg.lidar_ip.c_str(),
+                               driver_cfg.frame_frequency_hz);
+        source = std::make_unique<LivoxDriverSource>(&fast_lio, std::move(driver_cfg), g_running);
+    } else if (input_mode == "stream") {
+        auto stream_cfg = LcmStreamSource::Config::from_args(mod);
+        if (debug) std::printf("[fastlio2] stream: lidar_in=%s imu_in=%s\n",
+                               stream_cfg.lidar_in_topic.c_str(),
+                               stream_cfg.imu_in_topic.c_str());
+        source = std::make_unique<LcmStreamSource>(&fast_lio, lcm, std::move(stream_cfg), g_running);
+    } else {
+        throw std::runtime_error(
+            "Unknown --input_mode '" + input_mode + "' (expected livox|stream)");
+    }
 
-    // Main loop runs the FAST-LIO processing and publishes outputs 
-    run_loop(source, fast_lio, filter_cfg, publisher, lcm, main_freq);
+    if (!source->start()) return 1;
+    if (debug) std::printf("[fastlio2] Source started.\n");
+
+    // Main loop runs the FAST-LIO processing and publishes outputs
+    run_loop(*source, fast_lio, filter_cfg, publisher, lcm, main_freq);
 
     if (debug) std::printf("[fastlio2] Shutting down...\n");
-    source.stop();
+    source->stop();
     if (debug) std::printf("[fastlio2] Done.\n");
 
     return 0;
