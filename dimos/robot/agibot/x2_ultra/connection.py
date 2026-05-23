@@ -161,12 +161,8 @@ _ROS_PF_DTYPE = {
 }
 
 
-def _pc2_fields(msg: Any, names: tuple[str, ...]) -> dict[str, np.ndarray]:
-    """Read named PointFields from a ROS PointCloud2 as numpy arrays.
-
-    Returns {name: array} for fields present with a known datatype; missing or
-    unknown-type fields are omitted. Reads by declared offset/datatype, so it
-    handles any point_step layout (including padding gaps).
+def _extract_pointcloud_fields(msg: Any, names: tuple[str, ...]) -> dict[str, np.ndarray]:
+    """Extract fields from the ROS point cloud message, returning as a dictionary.
     """
     raw = bytes(msg.data)
     step = msg.point_step
@@ -199,7 +195,7 @@ def _ros_pointcloud2_to_dimos(msg: Any) -> PointCloud2:
     if n_points == 0:
         return PointCloud2(frame_id=msg.header.frame_id, ts=ts)
 
-    f = _pc2_fields(msg, ("x", "y", "z"))
+    f = _extract_pointcloud_fields(msg, ("x", "y", "z"))
     if not all(k in f for k in ("x", "y", "z")):
         raise ValueError("PointCloud2 missing x, y, or z field")
 
@@ -227,7 +223,7 @@ def _ros_lidar_to_stamped(msg: Any) -> StampedPointCloud:
     if n_points == 0:
         return StampedPointCloud(frame_id=msg.header.frame_id, ts=ts)
 
-    f = _pc2_fields(msg, ("x", "y", "z", "intensity", "timestamp"))
+    f = _extract_pointcloud_fields(msg, ("x", "y", "z", "intensity", "timestamp"))
     if not all(k in f for k in ("x", "y", "z")):
         raise ValueError("X2 LiDAR PointCloud2 missing x, y, or z field")
 
