@@ -1,0 +1,60 @@
+# FAST-LIO2 config for the AgiBot X2 Ultra: RoboSense E1R chest LiDAR +
+# FORSENSE FSS-IMU16460-DM chest IMU.
+#
+# Sources:
+# - LiDAR/IMU model + FOV from AgiBot X2 docs
+#   (https://x2-aimdk.agibot.com/en/latest/about_agibot_X2/sensor_fov.html).
+# - LiDAR→IMU extrinsic derived from dimos/robot/agibot/x2_ultra/x2_ultra.urdf:
+#     imu_in_torso_link  (torso_link → t=(-0.0249, 0.0020, 0.1059), rpy=0)
+#     lidar_chest_front  (torso_link → t=( 0.1026, 0     , 0.1816), rpy=(-pi/2,0,0))
+#   T_imu_lidar = T_torso_imu^-1 · T_torso_lidar
+#   → extrinsic_T below; extrinsic_R is R_x(-pi/2).
+# - extrinsic_est_en is on so FAST-LIO refines this online against the cloud.
+#
+# Stream-mode note: when fastlio2 is built with --input_mode=stream, the C++
+# binary subscribes to dimos LCM topics (lidar_in/imu_in) and bypasses the
+# Livox-specific path. So `common.lid_topic`/`imu_topic`, `preprocess.lidar_type`,
+# and `preprocess.scan_line` are unused in that mode — kept here for parity with
+# the Livox builds.
+
+common:
+    lid_topic:  "/x2/lidar"          # unused in stream mode
+    imu_topic:  "/x2/imu"            # unused in stream mode
+    time_sync_en: false              # X2Connection co-stamps both streams from ROS
+    time_offset_lidar_to_imu: 0.0
+
+preprocess:
+    lidar_type: 1                    # unused in stream mode
+    scan_line: 4                     # unused in stream mode (E1R is solid-state)
+    blind: 0.3                       # E1R has ~0.1 m min range; 0.3 to be safe
+
+mapping:
+    # FORSENSE FSS-IMU16460-DM (industrial MEMS, 1 kHz). Datasheet noise figures
+    # are not in the public X2 docs; these are conservative MEMS defaults — tune
+    # if odometry is noisy (raise covs) or sluggish (lower).
+    acc_cov: 0.05
+    gyr_cov: 0.01
+    b_acc_cov: 0.0001
+    b_gyr_cov: 0.0001
+
+    # E1R horizontal FOV is 120° (-60° to +60°); vertical 90°.
+    fov_degree: 120
+    det_range: 30.0                  # E1R rated ~30 m @ 10% reflectivity
+
+    # LiDAR-in-IMU extrinsic from URDF (see header).  extrinsic_est_en refines
+    # this online — turn off once a static calibration is locked in.
+    extrinsic_est_en: true
+    extrinsic_T: [ 0.12751, -0.00199, 0.07565 ]
+    extrinsic_R: [ 1,  0,  0,
+                   0,  0,  1,
+                   0, -1,  0 ]
+
+publish:
+    path_en: false
+    scan_publish_en: true
+    dense_publish_en: true
+    scan_bodyframe_pub_en: true
+
+pcd_save:
+    pcd_save_en: false
+    interval: -1

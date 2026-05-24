@@ -42,7 +42,7 @@ from reactivex.disposable import Disposable
 
 from dimos.core.core import rpc
 from dimos.core.native_module import NativeModule, NativeModuleConfig
-from dimos.core.stream import Out
+from dimos.core.stream import In, Out
 from dimos.hardware.sensors.lidar.livox.ports import (
     SDK_CMD_DATA_PORT,
     SDK_HOST_CMD_DATA_PORT,
@@ -60,6 +60,7 @@ from dimos.msgs.geometry_msgs.Quaternion import Quaternion
 from dimos.msgs.geometry_msgs.Transform import Transform
 from dimos.msgs.geometry_msgs.Vector3 import Vector3
 from dimos.msgs.nav_msgs.Odometry import Odometry
+from dimos.msgs.sensor_msgs.Imu import Imu
 from dimos.msgs.sensor_msgs.PointCloud2 import PointCloud2
 from dimos.navigation.nav_stack.frames import FRAME_BODY, FRAME_ODOM
 from dimos.spec import mapping, perception
@@ -74,6 +75,12 @@ class FastLio2Config(NativeModuleConfig):
     cwd: str | None = "cpp"
     executable: str = "result/bin/fastlio2_native"
     build_command: str | None = "nix build .#fastlio2_native"
+
+    # Where the binary gets LiDAR + IMU from:
+    #   "livox"  — bind the Livox SDK over UDP (default; uses host_ip/lidar_ip below)
+    #   "stream" — subscribe to dimos LCM topics on lidar_in/imu_in
+    input_mode: str = "livox"
+
     # Livox SDK hardware config
     host_ip: str = "192.168.1.5"
     lidar_ip: str = "192.168.1.155"
@@ -156,13 +163,17 @@ class FastLio2Config(NativeModuleConfig):
 class FastLio2(NativeModule, perception.Lidar, perception.Odometry, mapping.GlobalPointcloud):
     config: FastLio2Config
 
+    lidar_in: In[PointCloud2]
+    imu_in: In[Imu]
+
     lidar: Out[PointCloud2]
     odometry: Out[Odometry]
     global_map: Out[PointCloud2]
 
     @rpc
     def start(self) -> None:
-        self._validate_network()
+        if self.config.input_mode == "livox":
+            self._validate_network()
         super().start()
         self.register_disposable(
             Disposable(self.odometry.transport.subscribe(self._on_odom_for_tf, self.odometry))
