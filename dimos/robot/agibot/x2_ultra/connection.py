@@ -18,7 +18,6 @@ import time
 from typing import Any
 
 import numpy as np
-import open3d as o3d
 from pydantic import Field
 
 from dimos.agents.annotation import skill
@@ -26,14 +25,13 @@ from dimos.constants import DEFAULT_THREAD_JOIN_TIMEOUT
 from dimos.core.core import rpc
 from dimos.core.module import Module, ModuleConfig
 from dimos.core.stream import In, Out
-from dimos.msgs.geometry_msgs.Quaternion import Quaternion
 from dimos.msgs.geometry_msgs.Twist import Twist
-from dimos.msgs.geometry_msgs.Vector3 import Vector3
 from dimos.msgs.sensor_msgs.CameraInfo import CameraInfo
-from dimos.msgs.sensor_msgs.Image import Image, ImageFormat
+from dimos.msgs.sensor_msgs.Image import Image
 from dimos.msgs.sensor_msgs.Imu import Imu
 from dimos.msgs.sensor_msgs.PointCloud2 import PointCloud2
 from dimos.msgs.sensor_msgs.StampedPointCloud import StampedPointCloud
+from dimos.protocol.pubsub.impl.rospubsub_conversion import ros_to_dimos
 from dimos.spec.perception import IMU, Camera, Lidar, Pointcloud
 from dimos.utils.logging_config import setup_logger
 
@@ -110,43 +108,6 @@ def _clamp_velocity(value: float, min_mag: float, max_mag: float) -> float:
     )
 
 
-def _ros_image_to_dimos(msg: Any) -> Image:
-    """Convert a ROS2 sensor_msgs/Image to a dimos Image."""
-    ts = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-    enc = msg.encoding.lower()
-
-    data = np.frombuffer(bytes(msg.data), dtype=np.uint8)
-
-    if enc in ("rgb8",):
-        arr = data.reshape((msg.height, msg.width, 3))
-        fmt = ImageFormat.RGB
-    elif enc in ("bgr8",):
-        arr = data.reshape((msg.height, msg.width, 3))
-        fmt = ImageFormat.BGR
-    elif enc in ("rgba8",):
-        arr = data.reshape((msg.height, msg.width, 4))
-        fmt = ImageFormat.RGBA
-    elif enc in ("bgra8",):
-        arr = data.reshape((msg.height, msg.width, 4))
-        fmt = ImageFormat.BGRA
-    elif enc in ("mono8",):
-        arr = data.reshape((msg.height, msg.width))
-        fmt = ImageFormat.GRAY
-    elif enc in ("16uc1", "mono16"):
-        arr = np.frombuffer(bytes(msg.data), dtype=np.uint16).reshape((msg.height, msg.width))
-        fmt = ImageFormat.DEPTH16
-    elif enc in ("32fc1",):
-        arr = np.frombuffer(bytes(msg.data), dtype=np.float32).reshape((msg.height, msg.width))
-        fmt = ImageFormat.DEPTH
-    else:
-        # Fall back to raw reshape; assume 3-channel
-        logger.warning("X2Connection: unknown image encoding %s, treating as BGR", enc)
-        arr = data.reshape((msg.height, msg.width, -1))
-        fmt = ImageFormat.BGR
-
-    return Image(data=arr, format=fmt, frame_id=msg.header.frame_id, ts=ts)
-
-
 # ROS PointField datatype enum → numpy dtype. Native byte order is fine: X2 hosts
 # are little-endian and ROS sets is_bigendian=false, so native = wire.
 _ROS_PF_DTYPE = {
@@ -188,30 +149,11 @@ def _extract_pointcloud_fields(msg: Any, names: tuple[str, ...]) -> dict[str, np
     return out
 
 
-def _ros_pointcloud2_to_dimos(msg: Any) -> PointCloud2:
-    """Convert a ROS2 sensor_msgs/PointCloud2 to a dimos PointCloud2 (XYZ only)."""
-    ts = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-    n_points = msg.width * msg.height
-    if n_points == 0:
-        return PointCloud2(frame_id=msg.header.frame_id, ts=ts)
-
-    f = _extract_pointcloud_fields(msg, ("x", "y", "z"))
-    if not all(k in f for k in ("x", "y", "z")):
-        raise ValueError("PointCloud2 missing x, y, or z field")
-
-    pts = np.column_stack([f["x"], f["y"], f["z"]]).astype(np.float64)
-    pts = pts[np.isfinite(pts).all(axis=1)]
-
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(pts)
-    return PointCloud2(pointcloud=pcd, frame_id=msg.header.frame_id, ts=ts)
-
-
 def _ros_lidar_to_stamped(msg: Any) -> StampedPointCloud:
     """Convert the X2's chest-LiDAR PointCloud2 to a StampedPointCloud.
 
-    Keeps the per-point intensity and time that _ros_pointcloud2_to_dimos drops, so
-    FAST-LIO can motion-deskew the scan.
+    Keeps the per-point time that the generic ros_to_dimos PointCloud2 path drops
+    , so FAST-LIO can motion-deskew the scan.
 
     The RoboSense per-point ``timestamp`` is on the LiDAR's own clock, not the ROS
     header / IMU clock, so we store frame-relative offsets (point time minus the
@@ -243,52 +185,6 @@ def _ros_lidar_to_stamped(msg: Any) -> StampedPointCloud:
         timestamp=ts,
         intensities=intensities,
         times=times,
-    )
-
-
-def _ros_camera_info_to_dimos(msg: Any) -> CameraInfo:
-    """Convert a ROS2 sensor_msgs/CameraInfo to a dimos CameraInfo."""
-    ts = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-    return CameraInfo(
-        height=msg.height,
-        width=msg.width,
-        distortion_model=msg.distortion_model,
-        D=list(msg.d),
-        K=list(msg.k),
-        R=list(msg.r),
-        P=list(msg.p),
-        binning_x=msg.binning_x,
-        binning_y=msg.binning_y,
-        frame_id=msg.header.frame_id,
-        ts=ts,
-    )
-
-
-def _ros_imu_to_dimos(msg: Any) -> Imu:
-    """Convert a ROS2 sensor_msgs/Imu to a dimos Imu."""
-    ts = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-    return Imu(
-        angular_velocity=Vector3(
-            msg.angular_velocity.x,
-            msg.angular_velocity.y,
-            msg.angular_velocity.z,
-        ),
-        linear_acceleration=Vector3(
-            msg.linear_acceleration.x,
-            msg.linear_acceleration.y,
-            msg.linear_acceleration.z,
-        ),
-        orientation=Quaternion(
-            msg.orientation.x,
-            msg.orientation.y,
-            msg.orientation.z,
-            msg.orientation.w,
-        ),
-        orientation_covariance=list(msg.orientation_covariance),
-        angular_velocity_covariance=list(msg.angular_velocity_covariance),
-        linear_acceleration_covariance=list(msg.linear_acceleration_covariance),
-        frame_id=msg.header.frame_id,
-        ts=ts,
     )
 
 
@@ -500,24 +396,24 @@ class X2Connection(X2ConnectionBase, Camera, Pointcloud, IMU, Lidar):
             logger.error("X2Connection: input source registration timed out")
 
     def _on_rgb_image(self, msg: Any) -> None:
-        image = _ros_image_to_dimos(msg)
+        image = ros_to_dimos(msg, Image)
         self.color_image.publish(image)
         self._latest_video_frame = image
 
     def _on_depth_image(self, msg: Any) -> None:
-        self.depth_image.publish(_ros_image_to_dimos(msg))
+        self.depth_image.publish(ros_to_dimos(msg, Image))
 
     def _on_depth_cloud(self, msg: Any) -> None:
-        self.pointcloud.publish(_ros_pointcloud2_to_dimos(msg))
+        self.pointcloud.publish(ros_to_dimos(msg, PointCloud2))
 
     def _on_lidar(self, msg: Any) -> None:
         self.lidar.publish(_ros_lidar_to_stamped(msg))
 
     def _on_imu(self, msg: Any) -> None:
-        self.imu.publish(_ros_imu_to_dimos(msg))
+        self.imu.publish(ros_to_dimos(msg, Imu))
 
     def _on_camera_info(self, msg: Any) -> None:
-        self.camera_info.publish(_ros_camera_info_to_dimos(msg))
+        self.camera_info.publish(ros_to_dimos(msg, CameraInfo))
 
     @rpc
     def move(self, twist: Twist, duration: float = 0.0) -> bool:
