@@ -1,14 +1,5 @@
 // Copyright 2026 Dimensional Inc.
 // SPDX-License-Identifier: Apache-2.0
-//
-// LivoxDriverSource — owns the Livox SDK2 connection that feeds FAST-LIO:
-//   * initialises the SDK in start()
-//   * registers point-cloud / IMU / info-change callbacks
-//   * accumulates raw points into a custom_messages::CustomMsg and pushes
-//     one frame per 1/frequency seconds via tick()
-//   * pushes IMU samples to FAST-LIO directly from the SDK callback thread
-// This keeps main.cpp ignorant of the SDK and makes it trivial to add a
-// second source (e.g. an LCM stream subscriber) alongside it.
 
 #ifndef LIVOX_DRIVER_SOURCE_HPP_
 #define LIVOX_DRIVER_SOURCE_HPP_

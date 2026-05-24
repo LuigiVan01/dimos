@@ -1,18 +1,5 @@
 // Copyright 2026 Dimensional Inc.
 // SPDX-License-Identifier: Apache-2.0
-//
-// LcmStreamSource — feeds FAST-LIO from LCM subscriptions instead of the
-// Livox SDK. Used when the upstream is a non-Livox sensor whose data already
-// arrives as dimos streams (e.g. the X2 Ultra's chest RoboSense E1R LiDAR +
-// FORSENSE IMU, delivered by X2Connection).
-//
-// IMU caveat: this path does NOT multiply accel by GRAVITY_MS2 — the chest
-// IMU already reports m/s² and rad/s. Copying the Livox path's multiply
-// would silently corrupt the EKF.
-//
-// Per-point timestamp: the upstream PointCloud2 should carry a `t` field
-// (frame-relative seconds). If absent, deskew is disabled (offset_time=0)
-// and a one-time warning is printed. See SLAM_SPEC.md for the contract.
 
 #ifndef LCM_STREAM_SOURCE_HPP_
 #define LCM_STREAM_SOURCE_HPP_

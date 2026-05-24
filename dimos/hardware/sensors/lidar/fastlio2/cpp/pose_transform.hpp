@@ -1,8 +1,5 @@
 // Copyright 2026 Dimensional Inc.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Init-pose value type and quaternion helpers used by FastlioPublisher to
-// transform SLAM-origin outputs into the user's chosen world frame.
 
 #ifndef POSE_TRANSFORM_HPP_
 #define POSE_TRANSFORM_HPP_

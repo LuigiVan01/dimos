@@ -80,9 +80,7 @@ static void run_loop(LidarImuSource& source,
         const auto loop_start = std::chrono::high_resolution_clock::now();
         const auto now = std::chrono::steady_clock::now();
 
-        // Drain ALL pending LCM messages each iteration. Critical for stream
-        // mode (input arrives via subscriptions); harmless for livox mode
-        // (no subscriptions, loop exits immediately).
+        // Drain all pending LCM messages
         while (lcm.handleTimeout(0) > 0) {}
 
         source.tick(now);
@@ -115,14 +113,13 @@ static void run_loop(LidarImuSource& source,
 int main(int argc, char** argv) {
     dimos::NativeModule mod(argc, argv);
 
-    // FAST-LIO core knobs (small enough to keep inline)
     const std::string config_path = mod.arg("config_path", "");
     if (config_path.empty()) {
         std::fprintf(stderr, "Error: --config_path <path> is required\n");
         return 1;
     }
 
-    // Per-scan filter — lives at the call site between source and publisher.
+    // Per-scan filter
     const auto filter_cfg = CloudFilterConfig::from_args(mod);
 
     const bool debug = mod.arg_bool("debug", false);
@@ -150,8 +147,6 @@ int main(int argc, char** argv) {
 
     FastlioPublisher publisher(lcm, pub_cfg);
 
-    // Pick the input path. `livox` is the default; `stream` consumes LCM
-    // topics fed by an upstream connection module (e.g. X2Connection).
     std::unique_ptr<LidarImuSource> source;
     if (input_mode == "livox") {
         auto driver_cfg = LivoxDriverSource::Config::from_args(mod);
